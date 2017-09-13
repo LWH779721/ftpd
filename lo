@@ -1,2 +1,0 @@
-gcc mftp.c -o2 -o mftp
-gcc mftp_client.c -o2 -o mftp_client
