@@ -2,7 +2,7 @@
 #define __M_LANGUAGE_H__
 
 #ifdef __Cplusplus
-extern .C{
+extern "C"{
 #endif
 
 /*  

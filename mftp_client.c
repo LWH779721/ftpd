@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include "mlog.h"
 #include "mftp.h"
 
 extern int errno;
@@ -21,7 +22,7 @@ long start_up(int *srv)
 
 	if (0 > (*srv = socket(AF_INET, SOCK_DGRAM, 0)))
 	{
-		print_log("create socker err");
+		mlog("create socker err");
 		return -1;
 	}
     
@@ -56,7 +57,8 @@ int main(int argc,char ** args)
 	socklen_t len = sizeof(server);
 	char buf[1024];
     FILE *fp = NULL;
-
+    struct mftp_head head;
+    
 	if (start_up(&srv))
 	{
 		printf("start up server err\n");
@@ -73,8 +75,28 @@ int main(int argc,char ** args)
 	    printf("mftp>");
 	    fgets(buf, sizeof buf - 1, stdin);
 	    i = strlen(buf);
+	    
+	    head.flag = 0;
+	    head.len = i;
+	    sendto(srv, (char *)&head, sizeof head, 0, (struct sockaddr *)&server, len);
         sendto(srv, buf, i, 0, (struct sockaddr *)&server, len);
-        while((i = recvfrom (srv, buf, sizeof(buf), 0, (struct sockaddr *)&server, &len)) > 0)
+        
+        if((i = recvfrom (srv, (char *)&head, sizeof head, 0, (struct sockaddr *)&server, &len)) > 0)
+        {
+            mlog("head.flag :%s", head.flag);
+            if (head.flag == 1)
+            {
+                if (head.len > 1024 
+                    || (i = recvfrom (srv, buf, head.len, 0, (struct sockaddr *)&server, &len)) <= 0)
+                {
+                    mlog("recv cmd err");
+                    continue;
+                }
+            
+                mlog("result :%s", buf);
+            }
+        }
+        /*while((i = recvfrom (srv, buf, sizeof(buf), 0, (struct sockaddr *)&server, &len)) > 0)
         {
             buf[i] = '\0';
             printf("from %s:%s",inet_ntoa(server.sin_addr),buf);
@@ -96,7 +118,58 @@ int main(int argc,char ** args)
             {
                 if (fp) fwrite(buf, 1, i, fp);    
             }
+        }*/
+    #if 0    
+        struct udp_pack pack;
+        //static int id = -1;
+        int total = 431104;
+        while((i = recvfrom (srv, &pack, sizeof pack, 0, (struct sockaddr *)&server, &len)) > 0)
+        {
+            if (pack.rtype == 0)
+            {
+                mlog("%s",pack.buf);
+                continue;    
+            }
+            
+            if (pack.rtype == 1
+                && NULL == fp)
+            {
+                if (NULL == (fp = fopen("tmp.data","ab+")))
+                {
+                    mlog("failed when open file");
+                    continue;
+                }
+            }
+
+            mlog("pack.id : %d", pack.id);
+            /*if ((pack.id - id) != 1)
+            {
+                mlog("failed when recv data, cls file");
+                system("rm tmp.data");
+                break;    
+            }
+            
+            id++;*/
+            //mlog("%d : %d\n", pack.total, pack.send);
+            //mlog("%d : %d\n", pack.id, id);
+            fwrite(pack.buf, 1, pack.len, fp);
+            
+            /*if (pack.send == pack.total
+                || pack.len == 0)
+            {
+                fclose(fp); 
+                fp = NULL;
+                break;
+            }*/
+            total += pack.len;
+            if (total == pack.total)
+            {
+                fclose(fp); 
+                fp = NULL;
+                break;
+            }
         }
+    #endif    
 	}
 	
 fail_label:

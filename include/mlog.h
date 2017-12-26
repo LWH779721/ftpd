@@ -2,7 +2,7 @@
 #define __MLOG_H__
 
 #ifdef __Cplusplus
-extern .C{
+extern "C"{
 #endif
 
 #ifndef mlog

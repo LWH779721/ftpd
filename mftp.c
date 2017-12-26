@@ -6,9 +6,9 @@
 #include <netinet/in.h>
 #include <pthread.h>
 #include <ctype.h>
-#include <stdlib.h>
-#include <string.h>
 #include <errno.h>
+#include <sys/sendfile.h>
+#include "mlog.h"
 #include "mftp.h"
 
 extern int errno;
@@ -21,7 +21,7 @@ long start_up(int *srv)
 
 	if (0 > (*srv = socket(AF_INET, SOCK_DGRAM, 0)))
 	{
-		print_log("create socker err");
+		mlog("create socker err");
 		return -1;
 	}
     
@@ -55,25 +55,87 @@ fail_label:
 	return ret;	
 }
 
+long send_file(int srv, struct sockaddr *client, char *file, long start)
+{
+    FILE *fp;
+    int len;
+    struct udp_pack pack = {
+        .id = 0,
+        .rtype = 1,
+        .send = 0
+    };
+    
+    if (NULL == (fp = fopen(file, "rb")))
+    {
+        mlog("failed when open file");
+        return -1;//send_err(srv, client);        
+    }
+    
+    fseek(fp, 0L, SEEK_END);
+    pack.total = ftell(fp);
+    rewind(fp);
+    
+    if (pack.total < 1024*1024)
+    {
+        sendfile( srv, fileno(fp), NULL, pack.total);    
+    }
+    else
+    {
+        if (start)
+        {
+            pack.send = start;
+            fseek(fp, start, SEEK_SET);
+        }
+    
+        while ((pack.len = fread(pack.buf, sizeof(char), 1024, fp)) > 0) {
+            pack.send += pack.len;
+            sendto(srv, &pack, sizeof pack, 0, client, sizeof *client);
+            pack.id++;
+            mlog("pack id : %d",pack.id);
+            usleep(20*1000);
+        }
+    }
+    
+    fclose(fp);
+    return 0;
+}
+
 long do_cmd(char *buf, struct sockaddr *client, int srv)
 {   
-    FILE *fp;
-    char cmd[20],file[20];
-    int len;
+    char cmd[20] = {0},file[20];
+    int len,start = 0;
+    char *p = buf;
     
-    sscanf(buf,"%s %s",cmd,file);
-    if (strstr(cmd, "ls"))
+    sscanf(p,"%s", cmd);
+    if (strcmp(cmd, "ls") == 0)
     {
-        fp = popen("ls -l", "r");
+        mlog("ls");
+        //sscanf(buf,"%s %s %d", cmd, file, &start);
+        FILE *fp;
+        struct mftp_head head;
+        char result[1024];
+         
+        fp = popen("ls", "r");
         if (NULL == fp)
         {
-            printf("errrr");
+            mlog("err when popen");
             return -1;
         }
+        
+        head.flag = 1;
+        if ((len = fread(result, sizeof(result), 1024, fp)) > 0) {
+            head.len = len;
+            sendto(srv, (char *)&head, sizeof head, 0, client, sizeof *client);
+            
+            sendto(srv, result, len, 0, client, sizeof *client);
+        }
+   
+        pclose(fp);
+        return 0;
     }
     else if (strstr(cmd, "get"))
     {
-        if (NULL == (fp = fopen(file, "rb")))
+        /*if (NULL == (fp = fopen(file, "rb")))
         {
             printf("errrr");
             return -1;
@@ -81,24 +143,16 @@ long do_cmd(char *buf, struct sockaddr *client, int srv)
         
         memcpy(buf, "file", strlen("file"));
         buf[strlen("file")] = '\0';
-        sendto(srv, buf, strlen(buf), 0, client, sizeof *client);
+        sendto(srv, buf, strlen(buf), 0, client, sizeof *client);*/
+        return send_file(srv, client, file, start);
     }
 
-    while ((len = fread(buf, sizeof(char), 1024, fp)) > 0) {
-        sendto(srv, buf, len, 0, client, sizeof *client);
-    }
-    
-    memcpy(buf, "end", strlen("end"));
-    buf[strlen("end")] = '\0';
-    sendto(srv, buf, strlen(buf), 0, client, sizeof *client);
-    fclose(fp);
-    //pclose(fp);
     return 0;
 }
 
 void usage()
 {
-    printf("usage ./mftp [-type] [-option]                                            \n");
+    printf("usage ./mftp [-type] [-option]                                      \n");
     printf("        -s                  : start server                          \n");
     printf("        -s -p [port]        : start server use port                 \n");
     printf("        -c -s [ip] [port]   : start client connect server ip port   \n");
@@ -117,6 +171,7 @@ int main(int argc,char ** args)
 	socklen_t len = sizeof(client_addr);
 	char buf[1024];
 	long rlen;
+    struct mftp_head head;
     
     if (argc == 1
         || memcmp(args[1], "-h", 2) == 0
@@ -135,11 +190,21 @@ int main(int argc,char ** args)
 	while (1)
 	{
 	    bzero(&client_addr,sizeof client_addr);
-        if ((rlen = recvfrom (srv, buf, sizeof(buf), 0, (struct sockaddr *)&client_addr, &len)) > 0)
+        if ((rlen = recvfrom (srv, (char *)&head, sizeof(head), 0, (struct sockaddr *)&client_addr, &len)) > 0)
         {
-            buf[rlen] = '\0';
-            printf("from %s:%s",inet_ntoa(client_addr.sin_addr),buf);
-            do_cmd(buf, (struct sockaddr *)&client_addr, srv);
+            if (head.flag == 0)
+            {   
+                if (head.len > 1024 
+                    || (rlen = recvfrom (srv, buf, head.len, 0, (struct sockaddr *)&client_addr, &len)) <= 0)
+                {
+                    mlog("recv cmd err");
+                    continue;
+                }
+                
+                buf[rlen] = '\0';
+                printf("from %s:%s",inet_ntoa(client_addr.sin_addr),buf);
+                do_cmd(buf, (struct sockaddr *)&client_addr, srv);    
+            }
         }
 	}
 	

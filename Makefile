@@ -1,14 +1,37 @@
-ALL: mftp mftp_client
+OUTPUT = mftp
+BUILD_FLAG = -I ./include
+cc = gcc
 
-.PHONY: ALL
+ifeq ($(target), exe)
+	ifeq ($(debug), y)
+		LINK_FLAG = -L ./libs -lmlog.debug
+		CFLAG = -g -Wall
+		OBJS_FLAGS = $(CFLAG) $(BUILD_FLAG)
+		OUTPUT = mftp.debug
+    else
+        LINK_FLAG = -L ./libs -lmlog
+        CFLAG = -o2
+        OBJS_FLAGS = $(CFLAG) $(BUILD_FLAG)
+    endif
+    #$(join $(output), .debug)
+else ifeq ($(target), a)
 
-mftp:
-	gcc mftp.c -o2 -o mftp
-	
-mftp_client:
-	gcc mftp_client.c -o2 -o mftp_client
-	
+else ifeq ($(target), so)
+
+endif
+
+SRCS = $(wildcard *.c)
+OBJS = $(patsubst %c, %o, $(SRCS))
+OUTPUT_OBJS = mftp.o
+
+ALL:$(OUTPUT)
+    
+$(OUTPUT):$(OBJS) 
+	@$(cc) $(OUTPUT_OBJS) $(LINK_FLAG) -o $(OUTPUT) 
+
+%.o:%.c
+	@$(cc) $(OBJS_FLAGS) -c $< -o $@
+   
+.PHONY: clean
 clean:
-	rm mftp
-	rm mftp_client
-	rm tmp.data
+	@rm -rf *.o *.a *.so mftp mftp.debug
