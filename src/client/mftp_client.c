@@ -9,7 +9,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-#include "mlog.h"
+
+#include "logger/logger.h"
 #include "mftp.h"
 
 extern int errno;
@@ -22,7 +23,7 @@ long start_up(int *srv)
 
 	if (0 > (*srv = socket(AF_INET, SOCK_DGRAM, 0)))
 	{
-		mlog("create socker err");
+		logger(err, "create socker err");
 		return -1;
 	}
     
@@ -83,17 +84,17 @@ int main(int argc,char ** args)
         
         if((i = recvfrom (srv, (char *)&head, sizeof head, 0, (struct sockaddr *)&server, &len)) > 0)
         {
-            mlog("head.flag :%s", head.flag);
+            logger(info, "head.flag :%s", head.flag);
             if (head.flag == 1)
             {
                 if (head.len > 1024 
                     || (i = recvfrom (srv, buf, head.len, 0, (struct sockaddr *)&server, &len)) <= 0)
                 {
-                    mlog("recv cmd err");
+                    logger(err, "recv cmd err");
                     continue;
                 }
             
-                mlog("result :%s", buf);
+                logger(info, "result :%s", buf);
             }
         }
         /*while((i = recvfrom (srv, buf, sizeof(buf), 0, (struct sockaddr *)&server, &len)) > 0)
@@ -127,7 +128,7 @@ int main(int argc,char ** args)
         {
             if (pack.rtype == 0)
             {
-                mlog("%s",pack.buf);
+                logger(debug, "%s",pack.buf);
                 continue;    
             }
             
@@ -136,22 +137,22 @@ int main(int argc,char ** args)
             {
                 if (NULL == (fp = fopen("tmp.data","ab+")))
                 {
-                    mlog("failed when open file");
+                    logger(err, "failed when open file");
                     continue;
                 }
             }
 
-            mlog("pack.id : %d", pack.id);
+            logger(debug, "pack.id : %d", pack.id);
             /*if ((pack.id - id) != 1)
             {
-                mlog("failed when recv data, cls file");
+                logger(err, "failed when recv data, cls file");
                 system("rm tmp.data");
                 break;    
             }
             
             id++;*/
-            //mlog("%d : %d\n", pack.total, pack.send);
-            //mlog("%d : %d\n", pack.id, id);
+            //logger(debug, "%d : %d\n", pack.total, pack.send);
+            //logger(debug, "%d : %d\n", pack.id, id);
             fwrite(pack.buf, 1, pack.len, fp);
             
             /*if (pack.send == pack.total

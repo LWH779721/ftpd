@@ -8,7 +8,8 @@
 #include <ctype.h>
 #include <errno.h>
 #include <sys/sendfile.h>
-#include "mlog.h"
+
+#include "logger/logger.h"
 #include "mftp.h"
 
 extern int errno;
@@ -21,7 +22,7 @@ long start_up(int *srv)
 
 	if (0 > (*srv = socket(AF_INET, SOCK_DGRAM, 0)))
 	{
-		mlog("create socker err");
+		logger(err, "create socker err");
 		return -1;
 	}
     
@@ -67,7 +68,7 @@ long send_file(int srv, struct sockaddr *client, char *file, long start)
     
     if (NULL == (fp = fopen(file, "rb")))
     {
-        mlog("failed when open file");
+        logger(err, "failed when open file");
         return -1;//send_err(srv, client);        
     }
     
@@ -91,7 +92,7 @@ long send_file(int srv, struct sockaddr *client, char *file, long start)
             pack.send += pack.len;
             sendto(srv, &pack, sizeof pack, 0, client, sizeof *client);
             pack.id++;
-            mlog("pack id : %d",pack.id);
+            logger(info, "pack id : %d",pack.id);
             usleep(20*1000);
         }
     }
@@ -109,7 +110,7 @@ long do_cmd(char *buf, struct sockaddr *client, int srv)
     sscanf(p,"%s", cmd);
     if (strcmp(cmd, "ls") == 0)
     {
-        mlog("ls");
+        logger(info, "ls");
         //sscanf(buf,"%s %s %d", cmd, file, &start);
         FILE *fp;
         struct mftp_head head;
@@ -118,7 +119,7 @@ long do_cmd(char *buf, struct sockaddr *client, int srv)
         fp = popen("ls", "r");
         if (NULL == fp)
         {
-            mlog("err when popen");
+            logger(err, "err when popen");
             return -1;
         }
         
@@ -197,7 +198,7 @@ int main(int argc,char ** args)
                 if (head.len > 1024 
                     || (rlen = recvfrom (srv, buf, head.len, 0, (struct sockaddr *)&client_addr, &len)) <= 0)
                 {
-                    mlog("recv cmd err");
+                    logger(info, "recv cmd err");
                     continue;
                 }
                 
